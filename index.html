@@ -7,7 +7,6 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <style>
@@ -52,7 +51,6 @@
 
       const inputRef = useRef(null);
 
-      // 1. 앱이 켜질 때 저장된 '구글 시트 주소'가 있는지 확인!
       useEffect(() => {
         const savedUrl = localStorage.getItem("google-sheet-url");
         if (savedUrl) {
@@ -63,15 +61,16 @@
         }
       }, []);
 
-      // 2. 구글 시트에서 실시간으로 데이터 가져오기!
+      // 💡 여기가 가장 강력하게 업그레이드된 데이터 수집 로직!
       const fetchDataFromSheet = async (url) => {
         setLoading(true);
         try {
           const response = await fetch(url);
           if (!response.ok) throw new Error("네트워크 에러");
           
-          const arrayBuffer = await response.arrayBuffer();
-          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          // 한글 깨짐 방지: 파일을 문자(Text)로 바로 읽어옵니다.
+          const csvText = await response.text();
+          const workbook = XLSX.read(csvText, { type: 'string' });
           const firstSheetName = workbook.SheetNames[0];
           const excelData = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName]);
 
@@ -79,21 +78,35 @@
           let count = 0;
 
           excelData.forEach(row => {
-            const studentName = row["성명"] || row["이름"];
-            const grade = row["학년"] || "";
-            const cls = row["반"];
+            let studentName = "";
+            let grade = "";
+            let cls = "";
+
+            // 띄어쓰기 철벽 방어: 열 제목의 빈칸을 모두 지우고 검사합니다.
+            for (let key in row) {
+              const cleanKey = key.replace(/\s/g, ''); // 제목에서 스페이스바 제거
+              if (cleanKey === "성명" || cleanKey === "이름") studentName = row[key];
+              if (cleanKey === "학년") grade = row[key];
+              if (cleanKey === "반") cls = row[key];
+            }
 
             if (studentName && cls) {
               let infoText = "";
               if (grade) infoText += `${grade}학년 `;
               infoText += `${cls}반`;
+              
+              // 학생 이름에 혹시 들어간 띄어쓰기도 깔끔하게 정리해서 저장
               newStudents[String(studentName).trim()] = infoText;
               count++;
             }
           });
 
           setStudents(newStudents);
-          setSaveStatus(`🎉 구글 시트에서 ${count}명 불러오기 성공!`);
+          if (count > 0) {
+            setSaveStatus(`🎉 구글 시트에서 ${count}명 불러오기 완벽 성공!`);
+          } else {
+            setSaveStatus(`⚠️ 파일을 읽었지만 명단을 못 찾았습니다. (첫 줄 제목이 '학년, 반, 이름'인지 확인하세요!)`);
+          }
         } catch (error) {
           console.error(error);
           setSaveStatus("❌ 링크가 잘못되었거나 구글 시트를 읽을 수 없습니다.");
@@ -119,7 +132,7 @@
           setAdminUnlocked(true);
           setPwError(false);
           setPwInput("");
-          setInputUrl(sheetUrl); // 로그인 성공 시 현재 저장된 주소 띄워주기
+          setInputUrl(sheetUrl);
           setSaveStatus("");
         } else {
           setPwError(true);
@@ -127,20 +140,17 @@
         }
       };
 
-      // 3. 관리자가 새로운 구글 시트 주소를 저장할 때!
       const saveUrl = () => {
         const trimmedUrl = inputUrl.trim();
         if (!trimmedUrl) {
           setSaveStatus("❌ 주소를 입력해 주세요.");
           return;
         }
-        // 내 브라우저에 구글 시트 주소를 영구 저장
         localStorage.setItem("google-sheet-url", trimmedUrl);
         setSheetUrl(trimmedUrl);
         fetchDataFromSheet(trimmedUrl);
       };
 
-      // 데이터를 수동으로 다시 불러오는 새로고침 버튼
       const refreshData = () => {
         if (sheetUrl) {
           setSaveStatus("🔄 구글 시트에서 최신 데이터를 가져오는 중...");
@@ -241,7 +251,7 @@
                 
                 <div className="manual-box">
                   <div className="manual-title">💡 1분 만에 끝나는 설정 가이드</div>
-                  1. 구글 스프레드시트에 <strong>'학년, 반, 성명'</strong>을 적습니다.<br/>
+                  1. 구글 스프레드시트에 <strong>'학년, 반, 성명(또는 이름)'</strong>을 적습니다.<br/>
                   2. 상단 메뉴에서 <strong>[파일] - [공유] - [웹에 게시]</strong> 클릭!<br/>
                   3. 문서 전체를 <strong>[CSV]</strong> 형식으로 선택하고 [게시] 클릭!<br/>
                   4. 생성된 <strong>긴 인터넷 주소(링크)</strong>를 복사해서 아래에 붙여넣으면 끝!
