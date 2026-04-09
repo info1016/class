@@ -3,26 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <title>반배정 프로그램</title>
-  
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@300;400;500&display=swap');
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    input, textarea, button { font-family: 'Noto Sans KR', sans-serif; }
-    @keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
-    @keyframes pop { from { opacity:0; transform:scale(0.88); } to { opacity:1; transform:scale(1); } }
-    @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-7px)} 40%{transform:translateX(7px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
-    .card { animation: fadeUp 0.6s ease both; }
-    .result-pop { animation: pop 0.45s cubic-bezier(.34,1.56,.64,1) both; }
-    .shake { animation: shake 0.4s ease both; }
-    input:focus { outline: none; border-color: #c0392b !important; box-shadow: 0 0 0 3px rgba(192,57,43,0.1) !important; }
-    textarea:focus { outline: none; border-color: #c0392b !important; }
-    button:active { transform: scale(0.98); }
-  </style>
 </head>
 <body>
   <div id="root"></div>
@@ -47,13 +31,11 @@
 
       const inputRef = useRef(null);
 
-      // 💡 창고(localStorage) 찌꺼기 방어 코드 강화!
       useEffect(() => {
         try {
           const savedData = localStorage.getItem("class-students");
           if (savedData) {
             const parsed = JSON.parse(savedData);
-            // 가져온 데이터가 진짜 정상적인 '사전(객체)' 형태일 때만 넣기!
             if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
               setStudents(parsed);
             } else {
@@ -74,7 +56,6 @@
           return;
         }
         if (students[trimmed] !== undefined) {
-          // 어떤 데이터든 문자로 안전하게 바꿔서 내보내기!
           setResult({ found: true, studentName: trimmed, cls: String(students[trimmed]) });
         } else {
           setResult({ found: false, studentName: trimmed, reason: "notfound" });
@@ -182,11 +163,25 @@
         setSaveStatus("");
       };
 
-      // 💡 여기서 더 이상 하얀 화면으로 멈추지 않도록 안전 장치를 유지합니다.
       if (loading) return null;
 
       return (
         <div style={s.body}>
+          <style>{`
+            @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@300;400;500&display=swap');
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            input, textarea, button { font-family: 'Noto Sans KR', sans-serif; }
+            @keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
+            @keyframes pop { from { opacity:0; transform:scale(0.88); } to { opacity:1; transform:scale(1); } }
+            @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-7px)} 40%{transform:translateX(7px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+            .card { animation: fadeUp 0.6s ease both; }
+            .result-pop { animation: pop 0.45s cubic-bezier(.34,1.56,.64,1) both; }
+            .shake { animation: shake 0.4s ease both; }
+            input:focus { outline: none; border-color: #c0392b !important; box-shadow: 0 0 0 3px rgba(192,57,43,0.1) !important; }
+            textarea:focus { outline: none; border-color: #c0392b !important; }
+            button:active { transform: scale(0.98); }
+          `}</style>
+
           <div style={s.header} className="card">
             <div style={s.badge}>2025 새학기 안내</div>
             <h1 style={s.h1}>반배정 <span style={{color:"#c0392b"}}>조회</span></h1>
@@ -299,6 +294,7 @@
       );
     }
 
+    // 스타일 코드를 안전하게 여러 줄로 분리했습니다! 복사할 때 잘리지 않아요.
     const s = {
       body: { minHeight: "100vh", background: "linear-gradient(160deg, #f7f3ee 0%, #f0ece6 100%)", fontFamily: "'Noto Sans KR', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 20px 80px", color: "#2c1810" },
       header: { textAlign: "center", marginBottom: 40, maxWidth: 480, width: "100%" },
@@ -320,7 +316,16 @@
       adminToggleBtn: { background: "none", border: "1px solid #d4bfb0", color: "#7a5c50", fontSize: 12, padding: "8px 20px", borderRadius: 20, cursor: "pointer", letterSpacing: 1, transition: "all 0.2s" },
       pwCard: { background: "#fffdf9", border: "1px solid #d4bfb0", borderRadius: 4, padding: "28px 32px", boxShadow: "0 2px 12px rgba(44,24,16,0.08)", position: "relative" },
       pwTitle: { fontFamily: "'Noto Serif KR', serif", fontSize: 16, fontWeight: 700, marginBottom: 10, color: "#2c1810" },
-      adminCard: { background: "#fffdf9", border: "1px solid #d4bfb0", borderRadius: 4, padding: "28px 32px", boxShadow: "0 2px 12px rgba(44,24,16,0.08)" },
+      
+      // 여기가 에러가 났던 부분! 줄바꿈이 안전하게 되도록 다듬었습니다.
+      adminCard: { 
+        background: "#fffdf9", 
+        border: "1px solid #d4bfb0", 
+        borderRadius: 4, 
+        padding: "28px 32px", 
+        boxShadow: "0 2px 12px rgba(44,24,16,0.08)" 
+      },
+      
       textarea: { width: "100%", padding: "12px 14px", fontSize: 13, border: "1.5px solid #d4bfb0", borderRadius: 3, background: "#fff", color: "#2c1810", resize: "vertical", lineHeight: 1.9 },
       lockBtn: { background: "none", border: "1px solid #d4bfb0", color: "#7a5c50", fontSize: 12, padding: "4px 12px", borderRadius: 10, cursor: "pointer" },
       footer: { marginTop: 60, fontSize: 11, color: "#7a5c50", opacity: 0.5, letterSpacing: 1, textAlign: "center" },
