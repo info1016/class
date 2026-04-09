@@ -2,11 +2,30 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>반배정 프로그램</title>
+  <title>반배정 프로그램 (구글 시트 연동)</title>
+  
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@300;400;500&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    input, textarea, button { font-family: 'Noto Sans KR', sans-serif; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes pop { from { opacity:0; transform:scale(0.88); } to { opacity:1; transform:scale(1); } }
+    @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-7px)} 40%{transform:translateX(7px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+    .card { animation: fadeUp 0.6s ease both; }
+    .result-pop { animation: pop 0.45s cubic-bezier(.34,1.56,.64,1) both; }
+    .shake { animation: shake 0.4s ease both; }
+    input:focus { outline: none; border-color: #c0392b !important; box-shadow: 0 0 0 3px rgba(192,57,43,0.1) !important; }
+    button:active { transform: scale(0.98); }
+    
+    .manual-box { background: #fdf0ec; padding: 16px; border-radius: 4px; border: 1.5px dashed #e8b4a0; margin-bottom: 16px; font-size: 13px; color: #7a5c50; line-height: 1.6; }
+    .manual-title { font-weight: bold; color: #c0392b; margin-bottom: 8px; font-size: 14px; }
+  </style>
 </head>
 <body>
   <div id="root"></div>
@@ -20,34 +39,67 @@
       const [name, setName] = useState("");
       const [result, setResult] = useState(null); 
       const [students, setStudents] = useState({});
+      const [sheetUrl, setSheetUrl] = useState("");
 
       const [showAdminLogin, setShowAdminLogin] = useState(false);
       const [adminUnlocked, setAdminUnlocked] = useState(false);
       const [pwInput, setPwInput] = useState("");
       const [pwError, setPwError] = useState(false);
-      const [rawData, setRawData] = useState("");
+      
+      const [inputUrl, setInputUrl] = useState("");
       const [saveStatus, setSaveStatus] = useState("");
       const [loading, setLoading] = useState(true);
 
       const inputRef = useRef(null);
 
+      // 1. 앱이 켜질 때 저장된 '구글 시트 주소'가 있는지 확인!
       useEffect(() => {
+        const savedUrl = localStorage.getItem("google-sheet-url");
+        if (savedUrl) {
+          setSheetUrl(savedUrl);
+          fetchDataFromSheet(savedUrl);
+        } else {
+          setLoading(false);
+        }
+      }, []);
+
+      // 2. 구글 시트에서 실시간으로 데이터 가져오기!
+      const fetchDataFromSheet = async (url) => {
+        setLoading(true);
         try {
-          const savedData = localStorage.getItem("class-students");
-          if (savedData) {
-            const parsed = JSON.parse(savedData);
-            if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-              setStudents(parsed);
-            } else {
-              setStudents({});
+          const response = await fetch(url);
+          if (!response.ok) throw new Error("네트워크 에러");
+          
+          const arrayBuffer = await response.arrayBuffer();
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const excelData = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName]);
+
+          const newStudents = {};
+          let count = 0;
+
+          excelData.forEach(row => {
+            const studentName = row["성명"] || row["이름"];
+            const grade = row["학년"] || "";
+            const cls = row["반"];
+
+            if (studentName && cls) {
+              let infoText = "";
+              if (grade) infoText += `${grade}학년 `;
+              infoText += `${cls}반`;
+              newStudents[String(studentName).trim()] = infoText;
+              count++;
             }
-          }
+          });
+
+          setStudents(newStudents);
+          setSaveStatus(`🎉 구글 시트에서 ${count}명 불러오기 성공!`);
         } catch (error) {
-          console.error("데이터 불러오기 에러:", error);
-          setStudents({});
+          console.error(error);
+          setSaveStatus("❌ 링크가 잘못되었거나 구글 시트를 읽을 수 없습니다.");
         }
         setLoading(false);
-      }, []);
+      };
 
       const lookup = () => {
         const trimmed = name.trim();
@@ -67,92 +119,33 @@
           setAdminUnlocked(true);
           setPwError(false);
           setPwInput("");
-          const lines = Object.entries(students || {}).map(([n, c]) => `${n},${c}`).join("\n");
-          setRawData(lines);
+          setInputUrl(sheetUrl); // 로그인 성공 시 현재 저장된 주소 띄워주기
+          setSaveStatus("");
         } else {
           setPwError(true);
           setPwInput("");
         }
       };
 
-      const saveStudents = () => {
-        const lines = rawData.split("\n").map(l => l.trim()).filter(Boolean);
-        const newStudents = {};
-        let errorLines = [];
-        
-        lines.forEach((line, i) => {
-          const parts = line.split(",");
-          if (parts.length >= 2) {
-            const n = parts[0].trim();
-            const c = parts.slice(1).join(",").trim(); 
-            if (n && c) newStudents[n] = c;
-            else errorLines.push(i + 1);
-          } else {
-            errorLines.push(i + 1);
-          }
-        });
-
-        if (errorLines.length > 0) {
-          setSaveStatus(`❌ 형식 오류 (${errorLines.length}줄): ${errorLines.join(", ")}번째 줄`);
+      // 3. 관리자가 새로운 구글 시트 주소를 저장할 때!
+      const saveUrl = () => {
+        const trimmedUrl = inputUrl.trim();
+        if (!trimmedUrl) {
+          setSaveStatus("❌ 주소를 입력해 주세요.");
           return;
         }
-
-        try {
-          localStorage.setItem("class-students", JSON.stringify(newStudents));
-          setStudents(newStudents);
-          setSaveStatus(`✅ ${Object.keys(newStudents).length}명 저장 완료`);
-          setResult(null);
-          setName("");
-        } catch (e) {
-          setSaveStatus("❌ 저장 실패. 다시 시도해 주세요.");
-        }
+        // 내 브라우저에 구글 시트 주소를 영구 저장
+        localStorage.setItem("google-sheet-url", trimmedUrl);
+        setSheetUrl(trimmedUrl);
+        fetchDataFromSheet(trimmedUrl);
       };
 
-      const handleFileUpload = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-          try {
-            const data = evt.target.result;
-            const workbook = XLSX.read(data, { type: 'binary' });
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-            const excelData = XLSX.utils.sheet_to_json(worksheet);
-
-            const newStudents = { ...students };
-            let count = 0;
-
-            excelData.forEach(row => {
-              const studentName = row["성명"] || row["이름"];
-              const grade = row["학년"] || "";
-              const cls = row["반"];
-
-              if (studentName && cls) {
-                let infoText = "";
-                if (grade) infoText += `${grade}학년 `;
-                infoText += `${cls}반`;
-
-                newStudents[String(studentName).trim()] = infoText;
-                count++;
-              }
-            });
-
-            localStorage.setItem("class-students", JSON.stringify(newStudents));
-            setStudents(newStudents);
-            
-            const lines = Object.entries(newStudents).map(([n, c]) => `${n},${c}`).join("\n");
-            setRawData(lines);
-            
-            setSaveStatus(`🎉 엑셀에서 ${count}명 자동 인식 완료!`);
-            e.target.value = ""; 
-          } catch (error) {
-            console.error(error);
-            setSaveStatus("❌ 엑셀 파일을 읽는 중 오류가 발생했습니다.");
-          }
-        };
-        reader.readAsBinaryString(file);
+      // 데이터를 수동으로 다시 불러오는 새로고침 버튼
+      const refreshData = () => {
+        if (sheetUrl) {
+          setSaveStatus("🔄 구글 시트에서 최신 데이터를 가져오는 중...");
+          fetchDataFromSheet(sheetUrl);
+        }
       };
 
       const lockAdmin = () => {
@@ -163,27 +156,14 @@
         setSaveStatus("");
       };
 
-      if (loading) return null;
+      if (loading && Object.keys(students).length === 0) {
+        return <div style={{textAlign: "center", marginTop: "50px", color: "#7a5c50"}}>📡 구글 시트와 연결 중입니다...</div>;
+      }
 
       return (
         <div style={s.body}>
-          <style>{`
-            @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@300;400;500&display=swap');
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            input, textarea, button { font-family: 'Noto Sans KR', sans-serif; }
-            @keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
-            @keyframes pop { from { opacity:0; transform:scale(0.88); } to { opacity:1; transform:scale(1); } }
-            @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-7px)} 40%{transform:translateX(7px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
-            .card { animation: fadeUp 0.6s ease both; }
-            .result-pop { animation: pop 0.45s cubic-bezier(.34,1.56,.64,1) both; }
-            .shake { animation: shake 0.4s ease both; }
-            input:focus { outline: none; border-color: #c0392b !important; box-shadow: 0 0 0 3px rgba(192,57,43,0.1) !important; }
-            textarea:focus { outline: none; border-color: #c0392b !important; }
-            button:active { transform: scale(0.98); }
-          `}</style>
-
           <div style={s.header} className="card">
-            <div style={s.badge}>2027 새학기 안내</div>
+            <div style={s.badge}>2025 새학기 안내</div>
             <h1 style={s.h1}>반배정 <span style={{color:"#c0392b"}}>조회</span></h1>
             <p style={s.subtext}>학생 이름을 입력하시면 배정된 반을 확인하실 수 있습니다.<br/>개인정보 보호를 위해 이름 조회만 제공됩니다.</p>
           </div>
@@ -254,36 +234,37 @@
 
             {adminUnlocked && (
               <div style={s.adminCard} className="card">
-                <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6}}>
-                  <div style={s.pwTitle}>학생 정보 관리 🔓</div>
+                <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
+                  <div style={s.pwTitle}>구글 시트 연동 설정 🔓</div>
                   <button style={s.lockBtn} onClick={lockAdmin}>잠금</button>
                 </div>
                 
-                <div style={s.excelBox}>
-                  <div style={s.excelTitle}>📁 엑셀/CSV 자동 업로드</div>
-                  <p style={s.excelDesc}>첫 번째 줄에 <strong>학년, 반, 성명(또는 이름)</strong> 제목이 있는 파일을 선택하세요.</p>
-                  <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} style={{fontSize: 12, marginTop: 8}} />
+                <div className="manual-box">
+                  <div className="manual-title">💡 1분 만에 끝나는 설정 가이드</div>
+                  1. 구글 스프레드시트에 <strong>'학년, 반, 성명'</strong>을 적습니다.<br/>
+                  2. 상단 메뉴에서 <strong>[파일] - [공유] - [웹에 게시]</strong> 클릭!<br/>
+                  3. 문서 전체를 <strong>[CSV]</strong> 형식으로 선택하고 [게시] 클릭!<br/>
+                  4. 생성된 <strong>긴 인터넷 주소(링크)</strong>를 복사해서 아래에 붙여넣으면 끝!
                 </div>
 
-                <div style={{textAlign: "center", margin: "14px 0", color: "#d4bfb0", fontSize: 12}}>— 또는 수동으로 텍스트 입력 —</div>
-
-                <p style={{fontSize:12, color:"#7a5c50", marginBottom:14, lineHeight:1.7}}>
-                  한 줄에 하나씩 <strong>이름,배정정보</strong> 형식으로 확인 및 수정하세요.
-                </p>
-                <textarea
-                  style={s.textarea}
-                  value={rawData}
-                  onChange={e => { setRawData(e.target.value); setSaveStatus(""); }}
-                  placeholder={"홍길동,1학년 2반\n김철수,2반"}
-                  rows={8}
+                <label style={s.label}>구글 시트 웹 게시 링크 (CSV)</label>
+                <input
+                  style={s.input}
+                  type="text"
+                  placeholder="https://docs.google.com/spreadsheets/..."
+                  value={inputUrl}
+                  onChange={e => { setInputUrl(e.target.value); setSaveStatus(""); }}
                 />
+                
                 <div style={{display:"flex", gap:10, marginTop:12}}>
-                  <button style={{...s.btn, marginTop:0, flex:1}} onClick={saveStudents}>수동 텍스트 저장하기</button>
-                  <button style={{...s.cancelBtn, flex:0.5}} onClick={() => setRawData("")}>초기화</button>
+                  <button style={{...s.btn, marginTop:0, flex:1}} onClick={saveUrl}>링크 저장 및 데이터 가져오기</button>
                 </div>
-                {saveStatus && <div style={{marginTop:10, fontSize:13, textAlign:"center", color: saveStatus.includes("✅") || saveStatus.includes("🎉") ? "#27ae60" : "#c0392b"}}>{saveStatus}</div>}
-                <div style={{marginTop:14, padding:"10px 14px", background:"#f9f6f3", borderRadius:3, fontSize:12, color:"#7a5c50"}}>
-                  현재 등록된 학생: <strong>{Object.keys(students || {}).length}명</strong>
+
+                {saveStatus && <div style={{marginTop:10, fontSize:13, textAlign:"center", color: saveStatus.includes("🎉") || saveStatus.includes("✅") ? "#27ae60" : "#c0392b"}}>{saveStatus}</div>}
+                
+                <div style={{marginTop:20, padding:"12px", background:"#f9f6f3", borderRadius:3, fontSize:12, color:"#7a5c50", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+                  <span>현재 연결된 학생: <strong>{Object.keys(students).length}명</strong></span>
+                  <button onClick={refreshData} style={{background:"#d4bfb0", color:"#fff", border:"none", padding:"4px 8px", borderRadius:3, cursor:"pointer", fontSize:11}}>🔄 실시간 새로고침</button>
                 </div>
               </div>
             )}
@@ -294,7 +275,6 @@
       );
     }
 
-    // 스타일 코드를 안전하게 여러 줄로 분리했습니다! 복사할 때 잘리지 않아요.
     const s = {
       body: { minHeight: "100vh", background: "linear-gradient(160deg, #f7f3ee 0%, #f0ece6 100%)", fontFamily: "'Noto Sans KR', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 20px 80px", color: "#2c1810" },
       header: { textAlign: "center", marginBottom: 40, maxWidth: 480, width: "100%" },
@@ -316,22 +296,9 @@
       adminToggleBtn: { background: "none", border: "1px solid #d4bfb0", color: "#7a5c50", fontSize: 12, padding: "8px 20px", borderRadius: 20, cursor: "pointer", letterSpacing: 1, transition: "all 0.2s" },
       pwCard: { background: "#fffdf9", border: "1px solid #d4bfb0", borderRadius: 4, padding: "28px 32px", boxShadow: "0 2px 12px rgba(44,24,16,0.08)", position: "relative" },
       pwTitle: { fontFamily: "'Noto Serif KR', serif", fontSize: 16, fontWeight: 700, marginBottom: 10, color: "#2c1810" },
-      
-      // 여기가 에러가 났던 부분! 줄바꿈이 안전하게 되도록 다듬었습니다.
-      adminCard: { 
-        background: "#fffdf9", 
-        border: "1px solid #d4bfb0", 
-        borderRadius: 4, 
-        padding: "28px 32px", 
-        boxShadow: "0 2px 12px rgba(44,24,16,0.08)" 
-      },
-      
-      textarea: { width: "100%", padding: "12px 14px", fontSize: 13, border: "1.5px solid #d4bfb0", borderRadius: 3, background: "#fff", color: "#2c1810", resize: "vertical", lineHeight: 1.9 },
+      adminCard: { background: "#fffdf9", border: "1px solid #d4bfb0", borderRadius: 4, padding: "28px 32px", boxShadow: "0 2px 12px rgba(44,24,16,0.08)" },
       lockBtn: { background: "none", border: "1px solid #d4bfb0", color: "#7a5c50", fontSize: 12, padding: "4px 12px", borderRadius: 10, cursor: "pointer" },
-      footer: { marginTop: 60, fontSize: 11, color: "#7a5c50", opacity: 0.5, letterSpacing: 1, textAlign: "center" },
-      excelBox: { padding: "16px", background: "#fdf0ec", borderRadius: 4, border: "1.5px dashed #e8b4a0", marginTop: 16 },
-      excelTitle: { fontSize: 13, fontWeight: "bold", color: "#c0392b", marginBottom: 6 },
-      excelDesc: { fontSize: 11, color: "#7a5c50", lineHeight: 1.5 }
+      footer: { marginTop: 60, fontSize: 11, color: "#7a5c50", opacity: 0.5, letterSpacing: 1, textAlign: "center" }
     };
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
