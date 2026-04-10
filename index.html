@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>반배정 프로그램 (모바일 최적화 및 최종 연동)</title>
+  <title>반배정 프로그램</title>
   
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -35,8 +35,7 @@
 
     const ADMIN_PASSWORD = "teacher1234";
 
-    // 💡 [선생님의 실수 완벽 수정!] 우리 친구의 구글 시트 주소를 심장부에 영구 박제했습니다!
-    // 이제 전 세계 어떤 컴퓨터, 휴대폰으로 접속해도 무조건 이 주소에서 명단을 찾아옵니다.
+    // 💡 우리 친구의 구글 시트 주소가 심장부에 완벽하게 영구 박제되었습니다!
     const GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSZ6Fb4ZfjzV4nScSVpum-VNdqBGbsuUwspDMmsJY1XG9sD_v8IQRURBVUJmOH-iTdoP6I0BO-1lNJe/pub?output=csv";
 
     function App() {
@@ -54,12 +53,11 @@
 
       const inputRef = useRef(null);
 
-      // 사이트가 켜지면 무조건 영구 박제된 주소에서 데이터를 가져옵니다.
+      // 사이트가 켜지면 무조건 영구 박제된 주소에서 데이터를 가져옵니다!
       useEffect(() => {
         fetchDataFromSheet(GOOGLE_SHEET_URL);
       }, []);
 
-      // 외부 도구 없이 순수하게 한글을 읽어내는 철벽 로직!
       const fetchDataFromSheet = async (url) => {
         setLoading(true);
         try {
@@ -75,7 +73,8 @@
              return;
           }
 
-          const lines = textData.split(/\r?\n/);
+          // \r\n, \n, \r 모든 줄바꿈 형태를 완벽하게 쪼갭니다.
+          const lines = textData.split(/\r\n|\n|\r/);
           if (lines.length < 2) {
              setSaveStatus("⚠️ 데이터가 부족합니다. 시트 내용을 확인해주세요.");
              setLoading(false);
@@ -174,7 +173,7 @@
       return (
         <div style={s.body}>
           <div style={s.header} className="card">
-            <div style={s.badge}>2026 새학기 안내</div>
+            <div style={s.badge}>2027 새학기 안내</div>
             <h1 style={s.h1}>반배정 <span style={{color:"#c0392b"}}>조회</span></h1>
             <p style={s.subtext}>학생 이름을 입력하시면 배정된 반을 확인하실 수 있습니다.<br/>개인정보 보호를 위해 이름 조회만 제공됩니다.</p>
           </div>
