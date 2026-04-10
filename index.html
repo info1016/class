@@ -3,17 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>반배정 프로그램 (모바일 최적화 및 최종 연동)</title>
+  <title>반배정 프로그램 (모바일 최적화 완료)</title>
   
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@300;400;500&display=swap');
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    /* 모바일에서는 폰트가 잘 보이도록 기본 설정을 잡아줍니다 */
     body { -webkit-text-size-adjust: 100%; } 
-    input, textarea, button { font-family: 'Noto Sans KR', sans-serif; font-size: 16px; } 
+    input, textarea, button { font-family: 'Noto Sans KR', sans-serif; font-size: 16px; } /* 16px 이하여야 아이폰에서 자동 확대가 안 됨 */
     
     @keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
     @keyframes pop { from { opacity:0; transform:scale(0.88); } to { opacity:1; transform:scale(1); } }
@@ -25,6 +27,7 @@
     input:focus { outline: none; border-color: #c0392b !important; box-shadow: 0 0 0 3px rgba(192,57,43,0.1) !important; }
     button:active { transform: scale(0.98); }
     .manual-box { background: #fdf0ec; padding: 16px; border-radius: 4px; border: 1.5px dashed #e8b4a0; margin-bottom: 16px; font-size: 13px; color: #7a5c50; line-height: 1.6; }
+    .manual-title { font-weight: bold; color: #c0392b; margin-bottom: 8px; font-size: 14px; }
   </style>
 </head>
 <body>
@@ -35,76 +38,68 @@
 
     const ADMIN_PASSWORD = "teacher1234";
 
-    // 💡 [선생님의 실수 완벽 수정!] 우리 친구의 구글 시트 주소를 심장부에 영구 박제했습니다!
-    // 이제 전 세계 어떤 컴퓨터, 휴대폰으로 접속해도 무조건 이 주소에서 명단을 찾아옵니다.
-    const GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSZ6Fb4ZfjzV4nScSVpum-VNdqBGbsuUwspDMmsJY1XG9sD_v8IQRURBVUJmOH-iTdoP6I0BO-1lNJe/pub?output=csv";
-
     function App() {
       const [name, setName] = useState("");
       const [result, setResult] = useState(null); 
       const [students, setStudents] = useState({});
+      const [sheetUrl, setSheetUrl] = useState("");
 
       const [showAdminLogin, setShowAdminLogin] = useState(false);
       const [adminUnlocked, setAdminUnlocked] = useState(false);
       const [pwInput, setPwInput] = useState("");
       const [pwError, setPwError] = useState(false);
       
+      const [inputUrl, setInputUrl] = useState("");
       const [saveStatus, setSaveStatus] = useState("");
       const [loading, setLoading] = useState(true);
 
       const inputRef = useRef(null);
 
-      // 사이트가 켜지면 무조건 영구 박제된 주소에서 데이터를 가져옵니다.
       useEffect(() => {
-        fetchDataFromSheet(GOOGLE_SHEET_URL);
+        const savedUrl = localStorage.getItem("google-sheet-url");
+        if (savedUrl) {
+          setSheetUrl(savedUrl);
+          fetchDataFromSheet(savedUrl);
+        } else {
+          setLoading(false);
+        }
       }, []);
 
-      // 외부 도구 없이 순수하게 한글을 읽어내는 철벽 로직!
       const fetchDataFromSheet = async (url) => {
         setLoading(true);
         try {
-          const fetchUrl = url + '&t=' + new Date().getTime();
+          const fetchUrl = url + (url.includes('?') ? '&' : '?') + 't=' + new Date().getTime();
           const response = await fetch(fetchUrl, { cache: 'no-store' });
           if (!response.ok) throw new Error("네트워크 에러");
           
           const textData = await response.text();
 
           if (textData.trim().startsWith("<!DOCTYPE html>") || textData.trim().startsWith("<html")) {
-             setSaveStatus("❌ 링크가 잘못되었습니다. 구글 시트 웹 게시 방식을 확인하세요.");
+             setSaveStatus("❌ 링크가 잘못되었습니다! 구글 시트에서 '웹페이지'가 아닌 'CSV'로 선택해서 다시 복사해 주세요.");
              setLoading(false);
              return;
           }
 
-          const lines = textData.split(/\r?\n/);
-          if (lines.length < 2) {
-             setSaveStatus("⚠️ 데이터가 부족합니다. 시트 내용을 확인해주세요.");
-             setLoading(false);
-             return;
-          }
-
-          const headers = lines[0].split(',').map(h => h.replace(/[\s\uFEFF\u200B"'\(\)\[\]]/g, ''));
-          const nameIdx = headers.findIndex(h => h.includes("성명") || h.includes("이름"));
-          const gradeIdx = headers.findIndex(h => h.includes("학년"));
-          const clsIdx = headers.findIndex(h => h.includes("반"));
-
-          if (nameIdx === -1 || clsIdx === -1) {
-            setSaveStatus(`⚠️ 첫 줄 제목에서 '반'과 '이름'을 찾을 수 없습니다.`);
-            setLoading(false);
-            return;
-          }
+          const workbook = XLSX.read(textData, { type: 'string' });
+          const firstSheetName = workbook.SheetNames[0];
+          const excelData = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], { defval: "" });
 
           const newStudents = {};
           let count = 0;
 
-          for (let i = 1; i < lines.length; i++) {
-            const currentLine = lines[i].trim();
-            if (!currentLine) continue;
+          excelData.forEach(row => {
+            let studentName = "";
+            let grade = "";
+            let cls = "";
 
-            const row = currentLine.split(',');
-
-            const studentName = row[nameIdx] ? row[nameIdx].replace(/["']/g, '').trim() : "";
-            const grade = gradeIdx !== -1 && row[gradeIdx] ? row[gradeIdx].replace(/["']/g, '').trim() : "";
-            const cls = row[clsIdx] ? row[clsIdx].replace(/["']/g, '').trim() : "";
+            for (let key in row) {
+              const cleanKey = key.replace(/[\s\uFEFF\u200B"'\(\)\[\]]/g, '');
+              const val = String(row[key]).trim();
+              
+              if (cleanKey === "이름" || cleanKey === "성명") studentName = val;
+              if (cleanKey === "학년") grade = val;
+              if (cleanKey === "반") cls = val;
+            }
 
             if (studentName && cls) {
               let infoText = "";
@@ -114,17 +109,17 @@
               newStudents[studentName] = infoText;
               count++;
             }
-          }
+          });
 
           setStudents(newStudents);
           if (count > 0) {
-            setSaveStatus(`🎉 현재 구글 시트에서 ${count}명을 실시간으로 불러오고 있습니다.`);
+            setSaveStatus(`🎉 완벽 성공! 구글 시트에서 ${count}명 불러왔습니다!`);
           } else {
-            setSaveStatus(`⚠️ 파일을 읽었지만 명단을 못 찾았습니다.`);
+            setSaveStatus(`⚠️ 파일을 읽었지만 명단을 못 찾았습니다. 첫 줄 제목이 '학년, 반, 이름'인지 확인하세요!`);
           }
         } catch (error) {
           console.error(error);
-          setSaveStatus("❌ 인터넷 문제이거나 링크가 끊어졌습니다.");
+          setSaveStatus("❌ 인터넷 문제이거나 링크가 잘못되었습니다.");
         }
         setLoading(false);
       };
@@ -147,6 +142,7 @@
           setAdminUnlocked(true);
           setPwError(false);
           setPwInput("");
+          setInputUrl(sheetUrl);
           setSaveStatus("");
         } else {
           setPwError(true);
@@ -154,9 +150,22 @@
         }
       };
 
+      const saveUrl = () => {
+        const trimmedUrl = inputUrl.trim();
+        if (!trimmedUrl) {
+          setSaveStatus("❌ 주소를 입력해 주세요.");
+          return;
+        }
+        localStorage.setItem("google-sheet-url", trimmedUrl);
+        setSheetUrl(trimmedUrl);
+        fetchDataFromSheet(trimmedUrl);
+      };
+
       const refreshData = () => {
-        setSaveStatus("🔄 구글 시트에서 최신 데이터를 가져오는 중...");
-        fetchDataFromSheet(GOOGLE_SHEET_URL);
+        if (sheetUrl) {
+          setSaveStatus("🔄 구글 시트에서 최신 데이터를 가져오는 중...");
+          fetchDataFromSheet(sheetUrl);
+        }
       };
 
       const lockAdmin = () => {
@@ -168,13 +177,13 @@
       };
 
       if (loading && Object.keys(students).length === 0) {
-        return <div style={{textAlign: "center", marginTop: "50px", color: "#7a5c50", padding: "20px"}}>📡 구글 시트와 연결 중입니다...<br/><span style={{fontSize: 12}}>(초기 로딩에 시간이 걸릴 수 있습니다.)</span></div>;
+        return <div style={{textAlign: "center", marginTop: "50px", color: "#7a5c50"}}>📡 구글 시트와 연결 중입니다...<br/><span style={{fontSize:12}}>(잠시만 기다려주세요)</span></div>;
       }
 
       return (
         <div style={s.body}>
           <div style={s.header} className="card">
-            <div style={s.badge}>2027 새학기 안내</div>
+            <div style={s.badge}>2026 새학기 안내</div>
             <h1 style={s.h1}>반배정 <span style={{color:"#c0392b"}}>조회</span></h1>
             <p style={s.subtext}>학생 이름을 입력하시면 배정된 반을 확인하실 수 있습니다.<br/>개인정보 보호를 위해 이름 조회만 제공됩니다.</p>
           </div>
@@ -246,15 +255,32 @@
             {adminUnlocked && (
               <div style={s.adminCard} className="card">
                 <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
-                  <div style={s.pwTitle}>시스템 관리 🔓</div>
+                  <div style={s.pwTitle}>구글 시트 연동 설정 🔓</div>
                   <button style={s.lockBtn} onClick={lockAdmin}>잠금</button>
                 </div>
                 
                 <div className="manual-box">
-                  <strong style={{color:"#c0392b"}}>💡 안내:</strong> 구글 시트 주소가 코드에 영구적으로 반영되어 있습니다. 명단이 바뀌었다면 구글 시트에서 직접 내용을 수정한 뒤, 아래의 <strong>실시간 새로고침</strong> 버튼을 누르세요.
+                  <div className="manual-title">💡 1분 만에 끝나는 설정 가이드</div>
+                  1. 구글 스프레드시트에 <strong>'학년, 반, 성명(또는 이름)'</strong>을 적습니다.<br/>
+                  2. 상단 메뉴에서 <strong>[파일] - [공유] - [웹에 게시]</strong> 클릭!<br/>
+                  3. 문서 전체를 <strong style={{color:"#c0392b", background:"#fff", padding:"0 4px"}}>[CSV]</strong> 형식으로 선택하고 [게시] 클릭! <strong>(웹페이지 아님!)</strong><br/>
+                  4. 생성된 <strong>긴 인터넷 주소(링크)</strong>를 복사해서 아래에 붙여넣으면 끝!
                 </div>
 
-                {saveStatus && <div style={{marginTop:10, fontSize:13, textAlign:"center", color: saveStatus.includes("🎉") ? "#27ae60" : "#c0392b"}}>{saveStatus}</div>}
+                <label style={s.label}>구글 시트 웹 게시 링크 (CSV)</label>
+                <input
+                  style={s.input}
+                  type="text"
+                  placeholder="https://docs.google.com/spreadsheets/..."
+                  value={inputUrl}
+                  onChange={e => { setInputUrl(e.target.value); setSaveStatus(""); }}
+                />
+                
+                <div style={{display:"flex", gap:10, marginTop:12}}>
+                  <button style={{...s.btn, marginTop:0, flex:1}} onClick={saveUrl}>링크 저장 및 데이터 가져오기</button>
+                </div>
+
+                {saveStatus && <div style={{marginTop:10, fontSize:13, textAlign:"center", color: saveStatus.includes("🎉") || saveStatus.includes("✅") ? "#27ae60" : "#c0392b"}}>{saveStatus}</div>}
                 
                 <div style={{marginTop:20, padding:"12px", background:"#f9f6f3", borderRadius:3, fontSize:12, color:"#7a5c50", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
                   <span>현재 연결된 학생: <strong>{Object.keys(students).length}명</strong></span>
@@ -270,6 +296,7 @@
     }
 
     const s = {
+      // 패딩을 조절해서 모바일에서도 답답해 보이지 않게 수정했어요!
       body: { minHeight: "100vh", background: "linear-gradient(160deg, #f7f3ee 0%, #f0ece6 100%)", fontFamily: "'Noto Sans KR', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", padding: "30px 16px 60px", color: "#2c1810" },
       header: { textAlign: "center", marginBottom: 30, maxWidth: 480, width: "100%" },
       badge: { display: "inline-block", border: "2px solid #c0392b", color: "#c0392b", fontFamily: "'Noto Serif KR', serif", fontSize: 11, letterSpacing: 4, padding: "5px 16px", marginBottom: 14 },
